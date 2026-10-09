@@ -255,7 +255,7 @@ def media_refs(d):
         for v in s.get('versions', []):
             refs.add(v['media'])
             if v.get('poster'): refs.add(v['poster'])
-    refs.update(['bt_stage2', 'stanislavsky_frame', 'cabinet_plate'])
+    refs.update(['bt_stage2', 'bt_view_hall', 'bt_view_stage', 'stanislavsky_frame', 'stanislavsky', 'cabinet_plate', 'stanislavsky_ref.mp4', 'kv_statue', 'kv_muse_moon', 'kv_moon_doves', 'kv_muse_flag', 'poster'])
     return refs
 
 
@@ -265,6 +265,16 @@ def media_path(ref):
     for ext in ('.jpg', '.png', '.mp4'):
         if (MEDIA / (ref + ext)).exists(): return MEDIA / (ref + ext)
     return MEDIA / (ref + '.jpg')
+
+
+def public(d):
+    """Что уходит на страницу: без внутренних полей (исполнители видны только в project.json и в CLI)."""
+    d = json.loads(json.dumps(d))
+    for s in d['scenes'] + d.get('extras', []):
+        s.pop('who', None)
+        for v in s.get('versions', []): v.pop('by', None)
+    for l in d.get('log', []): l.pop('by', None)
+    return d
 
 
 def cmd_build(a=None, quiet=False):
@@ -284,7 +294,7 @@ def cmd_build(a=None, quiet=False):
         if f.name not in used: f.unlink()
     d['assets'] = manifest
     d['built'] = now()
-    html = APP.read_text(encoding='utf-8').replace('__DATA__', json.dumps(d, ensure_ascii=False).replace('</', '<\\/'))
+    html = APP.read_text(encoding='utf-8').replace('__DATA__', json.dumps(public(d), ensure_ascii=False).replace('</', '<\\/'))
     iv = os.urandom(12); ct = aes.encrypt(iv, html.encode(), None)
     kid = hashlib.sha256(base64.b64decode(meta['salt'])).hexdigest()[:10]
     payload = {'v': hashlib.sha256(ct).hexdigest()[:10], 'kid': kid, 'iter': meta['iter'], 'salt': meta['salt'],
@@ -310,7 +320,7 @@ def cmd_verify(a=None):
         blob = (ASSETS / info['id']).read_bytes()
         raw = aes.decrypt(blob[:12], blob[12:], None)
         if raw != media_path(ref).read_bytes(): bad += 1; print('  не совпадает', ref)
-    src = load(); src.pop('assets', None); src.pop('built', None)
+    src = public(load()); src.pop('assets', None); src.pop('built', None)
     d2 = dict(d); d2.pop('assets', None); d2.pop('built', None)
     if d2 != src: bad += 1; print('  данные в странице отличаются от project.json (пересобери)')
     tot = sum(s['d'] or 0 for s in d['scenes'])
