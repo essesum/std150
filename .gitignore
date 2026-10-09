@@ -1,3 +1,5 @@
+private/
+*.zip
 inner.html
-std150-source.zip
-std150-source/
+__pycache__/
+.DS_Store

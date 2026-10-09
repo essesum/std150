@@ -47,7 +47,9 @@ input[type=checkbox]{accent-color:var(--gold)}
 (function(){
   const P=JSON.parse(document.getElementById('payload').textContent);
   const b64=s=>{const bin=atob(s);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u};
-  const KEY='std150_key_'+P.v;
+  // Ключ привязан к соли сайта (kid), а не к сборке: после публикации обновлений пароль заново не спрашивается.
+  const KID=P.kid||P.v, KEY='std150_key_'+KID, SKEY='std150_raw_'+KID;
+  const toB64=async k=>{const raw=new Uint8Array(await crypto.subtle.exportKey('raw',k));let s='';raw.forEach(c=>s+=String.fromCharCode(c));return btoa(s)};
   async function derive(pw){
     const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
     return crypto.subtle.deriveKey({name:'PBKDF2',salt:b64(P.salt),iterations:P.iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},true,['decrypt']);
@@ -55,13 +57,16 @@ input[type=checkbox]{accent-color:var(--gold)}
   async function open(key){
     const buf=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(P.iv)},key,b64(P.ct));
     const html=new TextDecoder().decode(buf);
+    try{sessionStorage.setItem(SKEY,await toB64(key))}catch(_){}
+    window.__STD_KEY=key;window.__STD_KID=KID;
     document.open();document.write(html);document.close();
+    window.__STD_KEY=key;window.__STD_KID=KID;
   }
   async function tryStored(){
-    let raw=null;try{raw=localStorage.getItem(KEY)}catch(e){}
+    let raw=null;try{raw=sessionStorage.getItem(SKEY)||localStorage.getItem(KEY)}catch(e){}
     if(!raw)return;
-    try{const k=await crypto.subtle.importKey('raw',b64(raw),{name:'AES-GCM'},false,['decrypt']);await open(k)}
-    catch(e){try{localStorage.removeItem(KEY)}catch(_){}}
+    try{const k=await crypto.subtle.importKey('raw',b64(raw),{name:'AES-GCM'},true,['decrypt']);await open(k)}
+    catch(e){try{localStorage.removeItem(KEY);sessionStorage.removeItem(SKEY)}catch(_){}}
   }
   const f=document.getElementById('f'),btn=document.getElementById('go'),err=document.getElementById('err');
   f.addEventListener('submit',async e=>{
@@ -69,13 +74,15 @@ input[type=checkbox]{accent-color:var(--gold)}
     try{
       const k=await derive(document.getElementById('pw').value);
       if(document.getElementById('rem').checked){
-        try{const raw=new Uint8Array(await crypto.subtle.exportKey('raw',k));let s='';raw.forEach(c=>s+=String.fromCharCode(c));localStorage.setItem(KEY,btoa(s))}catch(_){}
+        try{localStorage.setItem(KEY,await toB64(k))}catch(_){}
       }
       await open(k);
     }catch(x){err.textContent='Пароль не подошёл. Проверь раскладку и попробуй ещё раз.';btn.disabled=false;btn.textContent='Открыть'}
   });
   if(!window.crypto||!crypto.subtle){err.textContent='Браузер не поддерживает шифрование. Открой страницу по https в свежем Chrome, Safari или Firefox.'}
-  else tryStored();
+  // document.open() во время парсинга не заменяет документ, а дописывает в него — ждём конца загрузки.
+  else if(document.readyState==='complete')tryStored();
+  else window.addEventListener('load',()=>setTimeout(tryStored,0),{once:true});
 })();
 </script>
 </body>
