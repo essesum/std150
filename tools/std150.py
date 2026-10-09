@@ -197,7 +197,7 @@ def make_preview(src, base):
     out = base.with_suffix('.mp4'); poster = base.with_name(base.name + '_poster.jpg')
     run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-t', '60', '-an', '-vf', "scale='min(960,iw)':-2,fps=25", '-c:v', 'libx264', '-preset', 'veryfast',
          '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(out)])
-    run(['ffmpeg', '-v', 'error', '-y', '-ss', '1', '-i', str(src), '-frames:v', '1', '-vf', "scale='min(1600,iw)':-2", '-q:v', '3', str(poster)])
+    run(['ffmpeg', '-v', 'error', '-y', '-ss', '5', '-i', str(src), '-frames:v', '1', '-vf', "scale='min(1600,iw)':-2", '-q:v', '3', str(poster)])
     return out, poster
 
 
@@ -255,7 +255,7 @@ def media_refs(d):
         for v in s.get('versions', []):
             refs.add(v['media'])
             if v.get('poster'): refs.add(v['poster'])
-    refs.update(['bt_stage2', 'bt_view_hall', 'bt_view_stage', 'stanislavsky_frame', 'stanislavsky', 'cabinet_plate', 'stanislavsky_ref.mp4', 'kv_statue', 'kv_muse_moon', 'kv_moon_doves', 'kv_muse_flag', 'poster'])
+    refs.update(['bt_stage2', 'bt_view_hall', 'bt_view_stage', 'stanislavsky_frame', 'stanislavsky', 'cabinet_plate', 'stanislavsky_ref.mp4', 'kv_statue', 'kv_muse_moon', 'kv_moon_doves', 'kv_muse_flag'])
     return refs
 
 
