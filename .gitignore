@@ -3,3 +3,4 @@ private/
 inner.html
 __pycache__/
 .DS_Store
+.gstack/
