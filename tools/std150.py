@@ -36,7 +36,7 @@ ITER = 600_000
 STATUSES = ['none', 'scen', 'setup', 'anim', 'master', 'done']
 NET_STATES = ['up', 'blackout', 'sheer']
 EDITABLE = {'t', 'status', 'who', 'pr', 'note', 'rear', 'rsrc', 'net', 'nsrc', 'net_state', 'd', 'buf', 'anim', 'idea', 'diff', 'artists', 'loop', 'w', 'text'}
-MIME = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.mp4': 'video/mp4', '.gif': 'image/gif'}
+MIME = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.mp4': 'video/mp4', '.gif': 'image/gif', '.mp3': 'audio/mpeg'}
 
 
 def die(msg):
@@ -187,16 +187,26 @@ def fetch(src, dst_dir):
     return out
 
 
-def make_preview(src, base):
-    """Видео → mp4 h264 960px ≤60 c без звука + постер jpg; картинка → jpg 1600px. Возвращает (main, poster|None)."""
+def make_preview(src, base, sound=False, crf=24):
+    """Видео → mp4 h264 960px ≤60 c без звука + постер jpg; со --sound — 1280px целиком и со звуком.
+    Звук (mp3/wav/m4a/mov без видео) → mp3. Картинка → jpg 1600px. Возвращает (main, poster|None)."""
     ext = src.suffix.lower()
+    has_video = 'video' in run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', str(src)])
+    if ext in ('.mp3', '.wav', '.m4a', '.aac', '.aif', '.aiff') or (ext == '.mov' and not has_video):
+        out = base.with_suffix('.mp3')
+        run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', str(out)])
+        return out, None
     if ext in ('.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.psd', '.heic'):
         out = base.with_suffix('.jpg')
         run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-vf', "scale='min(1600,iw)':-2", '-q:v', '3', '-frames:v', '1', str(out)])
         return out, None
     out = base.with_suffix('.mp4'); poster = base.with_name(base.name + '_poster.jpg')
-    run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-t', '60', '-an', '-vf', "scale='min(960,iw)':-2,fps=25", '-c:v', 'libx264', '-preset', 'veryfast',
-         '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(out)])
+    if sound:
+        run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-vf', "scale='min(1280,iw)':-2,fps=25", '-c:v', 'libx264', '-preset', 'medium',
+             '-crf', str(crf), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', str(out)])
+    else:
+        run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-t', '60', '-an', '-vf', "scale='min(960,iw)':-2,fps=25", '-c:v', 'libx264', '-preset', 'veryfast',
+             '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(out)])
     run(['ffmpeg', '-v', 'error', '-y', '-ss', '5', '-i', str(src), '-frames:v', '1', '-vf', "scale='min(1600,iw)':-2", '-q:v', '3', str(poster)])
     return out, poster
 
@@ -209,18 +219,19 @@ def run(cmd, **kw):
 
 def cmd_add_version(a):
     d = load(); s = find(d, a.id)
-    surf = {'rear': 'rear', 'задник': 'rear', 'r': 'rear', 'net': 'net', 'сетка': 'net', 'n': 'net'}.get(a.surface.lower())
-    if not surf: die('--surface rear|net')
+    surf = {'rear': 'rear', 'задник': 'rear', 'r': 'rear', 'net': 'net', 'сетка': 'net', 'n': 'net', 'voice': 'voice', 'голос': 'voice'}.get(a.surface.lower())
+    if not surf: die('--surface rear|net|voice')
     with tempfile.TemporaryDirectory() as tmp:
         src = fetch(a.file, tmp)
         n = 1 + max([v['v'] for v in s.get('versions', []) if v['surface'] == surf] or [0])
         (MEDIA / 'v').mkdir(parents=True, exist_ok=True)
         slug = re.sub(r'[^\w]+', '_', s['id']).strip('_') or 'x'
         base = MEDIA / 'v' / f"{slug}_{surf}_v{n:03d}"
-        main, poster = make_preview(src, base)
+        main, poster = make_preview(src, base, a.sound, a.crf)
         orig = src.name
-    v = {'v': n, 'surface': surf, 'date': now(), 'by': a.by or '', 'note': a.note or '', 'name': orig,
+    v = {'v': n, 'surface': surf, 'date': now(), 'by': a.by or '', 'note': a.note or '', 'name': a.name or orig,
          'media': str(main.relative_to(MEDIA)), 'poster': str(poster.relative_to(MEDIA)) if poster else None}
+    if a.sound or main.suffix == '.mp3': v['sound'] = True
     s.setdefault('versions', []).append(v)
     if a.status: s['status'] = a.status
     save(d, a.by, f"{s['id']}: новая версия {surf} v{n:03d} ({orig})")
@@ -363,7 +374,10 @@ def main():
     p = sp.add_parser('summary'); p.set_defaults(f=cmd_summary)
     p = sp.add_parser('set'); p.add_argument('id'); p.add_argument('pairs', nargs='+'); p.add_argument('--by'); p.set_defaults(f=cmd_set)
     p = sp.add_parser('add-version'); p.add_argument('id'); p.add_argument('file'); p.add_argument('--surface', required=True)
-    p.add_argument('--by'); p.add_argument('--note'); p.add_argument('--status', choices=STATUSES); p.set_defaults(f=cmd_add_version)
+    p.add_argument('--by'); p.add_argument('--note'); p.add_argument('--status', choices=STATUSES)
+    p.add_argument('--sound', action='store_true', help='видео со звуком, целиком, 1280px')
+    p.add_argument('--crf', type=int, default=24, help='качество превью со --sound (больше — легче файл)')
+    p.add_argument('--name', help='имя файла для подписи (по умолчанию — имя исходника)'); p.set_defaults(f=cmd_add_version)
     p = sp.add_parser('comment'); p.add_argument('id'); p.add_argument('text'); p.add_argument('--by'); p.set_defaults(f=cmd_comment)
     p = sp.add_parser('ask'); p.add_argument('scene'); p.add_argument('text'); p.add_argument('--topic'); p.add_argument('--by'); p.set_defaults(f=cmd_ask)
     p = sp.add_parser('answer'); p.add_argument('qid'); p.add_argument('text'); p.add_argument('--by'); p.set_defaults(f=cmd_answer)
