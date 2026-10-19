@@ -267,7 +267,7 @@ def media_refs(d):
             refs.add(v['media'])
             if v.get('poster'): refs.add(v['poster'])
         refs.update(sh['img'] for sh in s.get('board', []) if sh.get('img') and media_path(sh['img']).exists())
-    refs.update(['bt_stage2', 'bt_view_hall', 'bt_view_stage', 'stanislavsky_frame', 'stanislavsky', 'cabinet_plate', 'stanislavsky_ref.mp4', 'kv_statue', 'kv_muse_moon', 'kv_moon_doves', 'kv_muse_flag'])
+    refs.update(['bt_stage2', 'bt_view_hall', 'bt_view_stage', 'stanislavsky_frame', 'stanislavsky', 'cabinet_plate', 'stanislavsky_ref.mp4', 'kv_muse_moon', 'kv_muse_flag'])
     return refs
 
 
